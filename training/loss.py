@@ -1,0 +1,39 @@
+import torch
+
+def mutual_information(X: torch.Tensor, templates: torch.Tensor, n, device='cpu'):
+    atol = 1e-2
+    rtol = 1e-2
+    X_expanded = X.unsqueeze(2)
+    T_expanded = templates.unsqueeze(1)
+
+    XT = torch.mul(X_expanded, T_expanded)
+    s_max = XT.max(dim=-1)[0].max(dim=-1)[0]
+    s_min = XT.min(dim=-1)[0].min(dim=-1)[0]
+
+    # XT = XT / s_max.unsqueeze(-1).unsqueeze(-1)
+    trace = XT.sum(dim=(-1, -2))
+    exp = torch.exp(trace)
+
+    ZT = exp.sum(dim=1, keepdim=True)
+
+    pXT = exp / ZT # (2 , 257)
+
+    pT = torch.full((1, (n*n+1)), 1/(1+n*n)).to(device) # (1 , 257)
+    pX = ((torch.mul(pXT,pT)).sum(dim=1)) # (2)
+    sum_pX = pX.nansum(dim=1)
+    one = torch.tensor(1.0, device=pT.device, dtype=pT.dtype)
+    try:
+        assert torch.allclose(sum_pX, one, rtol=rtol, atol=atol), f"sum_x p(x) debe ser 1, pero es {sum_pX}"
+    except AssertionError as e:
+        print(e)
+
+    eps_box = 1e-7
+    try:
+        assert (pXT >= -eps_box).all() and (pXT <= 1+eps_box).all(), f"Valores fuera de [0,1] en p(x|T)"
+        assert (pX  >= -eps_box).all() and (pX  <= 1+eps_box).all(), f"Valores fuera de [0,1] en p(x)"
+    except AssertionError as e:
+        print(e)
+    eps = 1e-12
+    ratio = pXT.clamp_min(eps) / pX.unsqueeze(1).clamp_min(eps)
+    MI = ((pT) * (pXT * torch.log(ratio)).nansum(dim=-2)).nansum(dim=-1)
+    return MI

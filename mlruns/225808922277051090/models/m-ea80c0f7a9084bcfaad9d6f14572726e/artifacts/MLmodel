@@ -1,0 +1,22 @@
+artifact_path: file:///Users/valefeve/Projects/interpretability/mlruns/225808922277051090/models/m-ea80c0f7a9084bcfaad9d6f14572726e/artifacts
+flavors:
+  python_function:
+    config:
+      device: null
+    data: data
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.pytorch
+    pickle_module_name: mlflow.pytorch.pickle_module
+    python_version: 3.11.13
+  pytorch:
+    code: null
+    model_data: data
+    pytorch_version: 2.8.0
+mlflow_version: 3.4.0
+model_id: m-ea80c0f7a9084bcfaad9d6f14572726e
+model_size_bytes: 1245965
+model_uuid: m-ea80c0f7a9084bcfaad9d6f14572726e
+prompts: null
+utc_time_created: '2025-10-05 21:14:07.045467'
