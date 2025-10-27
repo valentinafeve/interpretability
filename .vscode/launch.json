@@ -8,7 +8,7 @@
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
-            "module": "training.main_icnn",
+            "module": "training.main",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "python": "/opt/anaconda3/envs/interpretability/bin/python"

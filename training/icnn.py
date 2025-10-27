@@ -62,18 +62,20 @@ class InterpretableConvLayer(nn.Module):
         self.alpha = alpha
         self.n = feature_map_size
         self.templates = generate_templates(self.n, tau=self.tau, beta=self.beta)
+        # Templates are not trainable
+        self.templates.requires_grad = False
         self.negative_template = self.templates[-1]
 
     def forward(self, x):
         x = nn.ReLU()(self.conv(x))
         if not self.training:
             # logging.info("Inference mode: applying templates to feature maps.")
-            negative_template_stack = torch.repeat(self.negative_template.unsqueeze(0), x.shape[0]*x.shape[1], 1, 1)
+            # negative_template_stack = torch.repeat(self.negative_template.unsqueeze(0), x.shape[0]*x.shape[1], 1, 1)
             masks = self._assign_masks(x)
             masked_x = x * masks
             return masked_x * (masked_x > 0)
         else:
-            # logging.info("Training mode: returning raw feature maps.")
+            logging.info("Training mode: returning raw feature maps.")
             return x
 
     def _assign_masks(self, x):

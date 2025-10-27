@@ -11,7 +11,9 @@ class Model(nn.Module):
         # self.cnn2 = nn.Conv2d(filters_cnn, filters_icnn, kernel_size=3, padding=1)
 
         input_size = filters_icnn * (feature_map_size // 4) * (feature_map_size // 4)
-        self.linear = nn.Linear(3072, 100)
+        self.flatten_dim = filters_icnn * (feature_map_size // 4) * (feature_map_size // 4)
+        self.linear = nn.Linear(self.flatten_dim, 100)
+
         self.classifier = nn.Linear(100, num_classes)
 
     def forward(self, x):
@@ -20,10 +22,10 @@ class Model(nn.Module):
         x = nn.ReLU()(x)
         x = self.icnn(x)
         x = nn.ReLU()(x)
-        icnn_output = x
+        filters = x
         x = self.pool(x)
         x = x.view(x.size(0), -1)
         x = self.linear(x)
         x = nn.ReLU()(x)
         logits = self.classifier(x)
-        return logits, icnn_output
+        return logits, filters

@@ -1,0 +1,10 @@
+artifact_location: file:///Users/valefeve/Projects/interpretability/mlruns/510443119671335512/models/m-cf7729ae875345e58f379ac2c50a710f/artifacts
+creation_timestamp: 1761501736155
+experiment_id: '510443119671335512'
+last_updated_timestamp: 1761501739934
+model_id: m-cf7729ae875345e58f379ac2c50a710f
+model_type: null
+name: model_icnn_20251026-130207
+source_run_id: d05bb45304f44b9e98aad4057fc15330
+status: 2
+status_message: null

@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/valefeve/Projects/interpretability/mlruns/510443119671335512/01b9a9f1f3104f80a3434eb16cabf087/artifacts
+end_time: 1761527774711
+entry_point_name: ''
+experiment_id: '510443119671335512'
+lifecycle_stage: active
+run_id: 01b9a9f1f3104f80a3434eb16cabf087
+run_name: run_20251026-200734
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1761527254482
+status: 3
+tags: []
+user_id: valefeve

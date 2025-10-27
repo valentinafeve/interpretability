@@ -1,0 +1,14 @@
+artifact_uri: file:///Users/valefeve/Projects/interpretability/mlruns/824683717942026494/7979d2ef25f0489f9f3f4f88867b21dc/artifacts
+end_time: null
+entry_point_name: ''
+experiment_id: '824683717942026494'
+lifecycle_stage: active
+run_id: 7979d2ef25f0489f9f3f4f88867b21dc
+run_name: wistful-grouse-576
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1761497161324
+status: 1
+tags: []
+user_id: valefeve
