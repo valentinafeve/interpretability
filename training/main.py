@@ -28,7 +28,7 @@ IS_INTERPRETABLE = True
 BATCH_SIZE = 24
 EPOCHS = 30
 DESIRED_IMAGE_SHAPE = 64
-LAMBDA_ = 1e-3
+LAMBDA_ = 1e-1
 
 logger.info(f"Using interpretable model: {IS_INTERPRETABLE}")
 logger.info(f"Starting training with hyperparameters:" f"lambda={LAMBDA_}, epochs={EPOCHS}, image_shape={DESIRED_IMAGE_SHAPE}")
@@ -114,6 +114,8 @@ with mlflow.start_run(run_name=f"run_{current_date}"):
         }
 
         templates = generate_templates(32, tau=0.5, beta=4.0).to(device)
+        # Set templates as not trainable
+        templates.requires_grad = False
         model.train()
         for batch in tqdm(trainloader, desc="Training", leave=False):
             optimizer.zero_grad()
@@ -126,7 +128,7 @@ with mlflow.start_run(run_name=f"run_{current_date}"):
                 interp_loss = mutual_information(icnn_output, templates, icnn_output.shape[-1], device=device).sum()
                 total_loss = LAMBDA_ * interp_loss + (1 - LAMBDA_) * class_loss
                 # total_loss = class_loss
-                # losses_epoch["interp_loss"].append(interp_loss.item())
+                losses_epoch["interp_loss"].append(interp_loss.item())
 
             else:
                 total_loss = class_loss
