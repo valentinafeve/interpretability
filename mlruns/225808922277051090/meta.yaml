@@ -1,6 +1,0 @@
-artifact_location: file:///Users/valefeve/Projects/interpretability/mlruns/225808922277051090
-creation_time: 1759695931251
-experiment_id: '225808922277051090'
-last_update_time: 1759695931251
-lifecycle_stage: active
-name: non-interpretable-cnn
