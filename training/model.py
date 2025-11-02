@@ -18,8 +18,8 @@ class Model(nn.Module):
         x = self.pool(x)
         x = nn.ReLU()(x)
         x = self.cnn2(x)
-        filters = x
         x = nn.ReLU()(x)
+        filters = x
         x = self.pool(x)
         x = x.view(x.size(0), -1)
         x = self.linear(x)

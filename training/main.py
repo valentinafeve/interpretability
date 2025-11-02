@@ -14,29 +14,43 @@ from torchvision.transforms import (Compose, Normalize, Resize, ToPILImage,
                                     ToTensor)
 from tqdm import tqdm, trange
 
+from training.icnn import generate_templates
 from training.loss import mutual_information
 from training.model import Model
 # from training.model_icnn import Model
 from training.utils.plots import plot_tensors
-from training.icnn import generate_templates
+import os
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 IS_INTERPRETABLE = True
+
 ## Hyperparameters for training
 BATCH_SIZE = 24
 EPOCHS = 30
 DESIRED_IMAGE_SHAPE = 64
-LAMBDA_ = 1e-1
-
-logger.info(f"Using interpretable model: {IS_INTERPRETABLE}")
-logger.info(f"Starting training with hyperparameters:" f"lambda={LAMBDA_}, epochs={EPOCHS}, image_shape={DESIRED_IMAGE_SHAPE}")
+LAMBDA_ = 1e-3
 
 if IS_INTERPRETABLE:
     EXPERIMENT_NAME = "interpretable-cnn"
+    MODEL_NAME = "interpretable-cnn-model"
 else:
     EXPERIMENT_NAME = "cnn"
+    MODEL_NAME = "cnn-model"
+
+CURRENT_DATE = time.strftime("%Y%m%d-%H%M%S")
+
+CHECKPOINT_EVERY = 1
+RUN_NAME = f"run_{CURRENT_DATE}"
+RUN_PATH = f"runs/run_{CURRENT_DATE}"
+CHECKPOINT_PATH = f"{RUN_PATH}/model_icnn_checkpoint_{CURRENT_DATE}.pth"
+
+random_ids_for_samples = [0, 42, 7, 13, 25, 33, 49, 58, 67, 72]
+os.mkdir(RUN_PATH)
+
+logger.info(f"Using interpretable model: {IS_INTERPRETABLE}")
+logger.info(f"Starting training with hyperparameters:" f"lambda={LAMBDA_}, epochs={EPOCHS}, image_shape={DESIRED_IMAGE_SHAPE}")
 
 ## set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -94,29 +108,23 @@ model = model.to(device)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-3)
 criterion = nn.CrossEntropyLoss()
-
-current_date = time.strftime("%Y%m%d-%H%M%S")
-
-checkpoint_every = 5
-checkpoint_path = f"model_icnn_checkpoint_{current_date}.pth"
-
-with mlflow.start_run(run_name=f"run_{current_date}"):
+with mlflow.start_run(run_name=RUN_NAME):
     mlflow.log_param("lambda", LAMBDA_)
     mlflow.log_param("epochs", EPOCHS)
     mlflow.log_param("feature_map_size", n)
-
-    # templates = generate_templates(32, tau=0.5, beta=4.0)
+    
+    templates = generate_templates(32, tau=0.5/(32*32), beta=4.0).to(device)
+    # Set templates as not trainable
+    templates.requires_grad = False
+    
     for epoch in trange(EPOCHS):
+
         losses_epoch = {
             "total_loss": [],
             "class_loss": [],
             "interp_loss": []
         }
 
-        templates = generate_templates(32, tau=0.5, beta=4.0).to(device)
-        # Set templates as not trainable
-        templates.requires_grad = False
-        model.train()
         for batch in tqdm(trainloader, desc="Training", leave=False):
             optimizer.zero_grad()
             images, labels = batch['image'].to(device), batch['label'].to(device)
@@ -138,8 +146,7 @@ with mlflow.start_run(run_name=f"run_{current_date}"):
     
             total_loss.backward()
             optimizer.step()
-        
-        # Evaluate
+
         model.eval()
         with torch.no_grad():
             correct = 0
@@ -168,15 +175,21 @@ with mlflow.start_run(run_name=f"run_{current_date}"):
 
         for key in losses_epoch:
             mlflow.log_metric(f"train_{key}", np.mean(losses_epoch[key]), step=epoch)
-        if (epoch + 1) % checkpoint_every == 0:
-            torch.save(model.state_dict(), checkpoint_path)
-            mlflow.log_artifact(checkpoint_path)
+
+        if (((epoch + 1) % CHECKPOINT_EVERY) == 0) or (epoch == (EPOCHS - 1)):
+            torch.save(model.state_dict(), CHECKPOINT_PATH)
+            mlflow.log_artifact(CHECKPOINT_PATH)
             logger.info(f"Checkpoint saved at epoch {epoch+1}")
-            
+            save_path = f"{RUN_PATH}/icnn_filters_{CURRENT_DATE}_epoch{epoch}.png"
 
-    torch.save(model.state_dict(), f"model_icnn_{current_date}.pth")
+            valset_plots = torch.stack([valset[i]['image'] for i in random_ids_for_samples]).to(device)
+            _, icnn_output = model(valset_plots)
 
-    mlflow.pytorch.log_model(model, artifact_path=f"model_icnn_{current_date}", registered_model_name="interpretable-cnn-model")
+            img = plot_tensors(icnn_output, save_path=save_path)
+            mlflow.log_image(img, f"icnn_filters_epoch_{epoch}.png") 
+            print("debug")
+            if epoch == EPOCHS - 1:
+                mlflow.pytorch.log_model(model, artifact_path=f"{RUN_NAME.replace('-', '_')}_model", registered_model_name=MODEL_NAME)
 
     # Evaluate
     model.eval()
@@ -205,15 +218,3 @@ with mlflow.start_run(run_name=f"run_{current_date}"):
         
         mlflow.log_metric("train_accuracy", 100 * correct / total)
         print('Accuracy of the model on the {} test images: {} %'.format(total, 100 * correct / total))
-
-    # Plot filters
-    random_i = random.randint(0, len(testset) - 1)
-    image, label = testset[random_i]['image'], testset[random_i]['label']
-    image = image.unsqueeze(0).to(device)
-
-    outputs, icnn_output = model(image)
-
-    save_path = f"icnn_filters_{current_date}.png"
-    img = plot_tensors(icnn_output, save_path=save_path)
-
-    mlflow.log_image(img, "icnn_filters.png")

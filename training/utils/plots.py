@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from io import BytesIO
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 from PIL import Image
@@ -27,12 +28,20 @@ def plot_tensor(tensor, title=None, save=False):
     plt.show()
     plt.close()
 
-def plot_tensors(tensor, title=None, cmap="magma", show_colorbar=True, save_path=None):
+def plot_tensors(
+    tensor,
+    title=None,
+    cmap="magma",
+    show_colorbar=True,
+    save_path=None,
+    max_cols=None,
+    tile_size=2.0,
+):
     """
     Plots a batch of filters/images in a nearly square grid.
 
     The input tensor should have shape (batch_size, filters, height, width).
-    Only the first batch element is visualized.
+    All elements in the batch are visualized.
 
     Args:
         tensor (torch.Tensor or np.ndarray):
@@ -45,6 +54,10 @@ def plot_tensors(tensor, title=None, cmap="magma", show_colorbar=True, save_path
             Whether to display a shared colorbar. Defaults to True.
         save_path (str, optional):
             File path to save the plot. If None, the plot is not saved.
+        max_cols (int, optional):
+            Maximum number of columns in the grid. Defaults to a square layout.
+        tile_size (float, optional):
+            Size (in inches) of each subplot tile. Defaults to 2.0.
 
     Returns:
         image: PIL image
@@ -53,46 +66,69 @@ def plot_tensors(tensor, title=None, cmap="magma", show_colorbar=True, save_path
         tensor = tensor.detach().cpu().numpy()
 
     B, K, H, W = tensor.shape
-    imgs = tensor[0]  # (K, H, W)
-
-    vmin, vmax = float(imgs.min()), float(imgs.max())
+    imgs = tensor.reshape(B * K, H, W)
+    N = B * K
 
     # --- cuadrado automático ---
-    cols = int(np.ceil(np.sqrt(K)))
-    rows = int(np.ceil(K / cols))
+    if max_cols is None:
+        cols = int(np.ceil(np.sqrt(N)))
+    else:
+        cols = min(max_cols, N)
+    cols = max(cols, 1)
+    rows = int(np.ceil(N / cols))
 
-    fig, axs = plt.subplots(rows, cols, figsize=(cols * 2, rows * 2))
+    fig, axs = plt.subplots(rows, cols, figsize=(cols * tile_size, rows * tile_size))
     axs = np.atleast_2d(axs)
 
-    for i in range(K):
-        r, c = divmod(i, cols)
-        axs[r, c].imshow(imgs[i], cmap=cmap, vmin=vmin, vmax=vmax)
-        axs[r, c].axis("off")
+    global_vmin = float(imgs.min())
+    global_vmax = float(imgs.max())
+
+    for idx in range(N):
+        row, col = divmod(idx, cols)
+        ax = axs[row, col]
+        vmin, vmax = float(imgs[idx].min()), float(imgs[idx].max())
+        ax.imshow(imgs[idx], cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.axis("off")
+        batch_idx = idx // K
+        filter_idx = idx % K
+        ax.set_title(f"Filter {filter_idx}, batch {batch_idx}", fontsize=10)
 
     # Apagar celdas sobrantes
-    for j in range(K, rows * cols):
-        r, c = divmod(j, cols)
+    for idx in range(N, rows * cols):
+        r, c = divmod(idx, cols)
         axs[r, c].axis("off")
 
     # Colorbar compartida
     if show_colorbar:
         cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-        norm = Normalize(vmin=vmin, vmax=vmax)
+        if np.isclose(global_vmin, global_vmax):
+            eps = 1e-6 if global_vmin == 0 else abs(global_vmin) * 1e-6
+            norm = Normalize(vmin=global_vmin - eps, vmax=global_vmax + eps)
+            cbar_ticks = [global_vmin]
+        else:
+            norm = Normalize(vmin=global_vmin, vmax=global_vmax)
+            cbar_ticks = [global_vmin, global_vmax]
         sm = ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
         cbar = fig.colorbar(sm, cax=cbar_ax)
-        cbar.set_ticks([vmin, vmax])
+        cbar.set_ticks(cbar_ticks)
 
     if title:
         fig.suptitle(title, fontsize=14)
 
     plt.tight_layout(rect=[0, 0, 0.9, 0.95])
 
+    buf = BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=150)
+    buf.seek(0)
+
+    image = Image.open(buf)
     if save_path:
-        plt.savefig(save_path, bbox_inches="tight", dpi=150)
+        image.save(save_path, format="PNG")
 
-    # plt.show()
-    # plt.close()
+    image_copy = image.copy()
+    image.close()
+    buf.close()
+    plt.close(fig)
 
-    image = Image.open(save_path)
-    return image
+    return image_copy
