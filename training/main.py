@@ -21,13 +21,15 @@ from training.model import Model
 from training.utils.plots import plot_tensors
 import os
 
+from torchmetrics import Specificity, Accuracy, Precision, Recall
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 IS_INTERPRETABLE = True
 
 ## Hyperparameters for training
-BATCH_SIZE = 24
+BATCH_SIZE = 5
 EPOCHS = 30
 DESIRED_IMAGE_SHAPE = 64
 LAMBDA_ = 1e-3
@@ -46,7 +48,8 @@ RUN_NAME = f"run_{CURRENT_DATE}"
 RUN_PATH = f"runs/run_{CURRENT_DATE}"
 CHECKPOINT_PATH = f"{RUN_PATH}/model_icnn_checkpoint_{CURRENT_DATE}.pth"
 
-random_ids_for_samples = [0, 42, 7, 13, 25, 33, 49, 58, 67, 72]
+# random_ids_for_samples = [0, 42, 7, 13, 25, 33, 49, 58, 67, 72]
+random_ids_for_samples = random.sample(range(0, 12), 10)
 os.mkdir(RUN_PATH)
 
 logger.info(f"Using interpretable model: {IS_INTERPRETABLE}")
@@ -72,6 +75,8 @@ transform = transforms.Compose(
 ## Load dataset
 
 dataset = load_dataset("Hemg/Melanoma-Cancer-Image-Dataset", split="train")
+# Sample 10% of the dataset for faster training
+dataset = dataset.shuffle(seed=42).select(range(int(0.01 * len(dataset))))
 trainset, testevalset = dataset.train_test_split(test_size=0.2, seed=42).values()
 testset, valset = testevalset.train_test_split(test_size=0.5, seed=42).values()
 
@@ -103,7 +108,14 @@ losses = {
     "interp_loss": []
 }
 
-model = Model(feature_map_size=n, channels=3, num_classes=len(classes), filters_icnn=12)
+# Metrics
+specificity = Specificity(task="multiclass", average='macro', num_classes=len(classes)).to(device)
+accuracy = Accuracy(task="multiclass", average='macro', num_classes=len(classes)).to(device)
+precision = Precision(task="multiclass", average='macro', num_classes=len(classes)).to(device)
+recall = Recall(task="multiclass", average='macro', num_classes=len(classes)).to(device)
+
+
+model = Model(feature_map_size=n, channels=3, num_classes=len(classes), filters_icnn=10)
 model = model.to(device)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-3)
@@ -113,7 +125,7 @@ with mlflow.start_run(run_name=RUN_NAME):
     mlflow.log_param("epochs", EPOCHS)
     mlflow.log_param("feature_map_size", n)
     
-    templates = generate_templates(32, tau=0.5/(32*32), beta=4.0).to(device)
+    templates = generate_templates(16, tau=0.5/(16*16), beta=4.0).to(device)
     # Set templates as not trainable
     templates.requires_grad = False
     
@@ -133,7 +145,7 @@ with mlflow.start_run(run_name=RUN_NAME):
             class_loss = criterion(logits, labels.long())
        
             if IS_INTERPRETABLE:
-                interp_loss = mutual_information(icnn_output, templates, icnn_output.shape[-1], device=device).sum()
+                interp_loss = mutual_information(icnn_output, templates, icnn_output.shape[-1], len(classes), labels, device=device).sum()
                 total_loss = LAMBDA_ * interp_loss + (1 - LAMBDA_) * class_loss
                 # total_loss = class_loss
                 losses_epoch["interp_loss"].append(interp_loss.item())
@@ -149,29 +161,52 @@ with mlflow.start_run(run_name=RUN_NAME):
 
         model.eval()
         with torch.no_grad():
-            correct = 0
-            total = 0
+            predicted_all = []
+            labels_all = []
+
             for batch in valloader:
                 images, labels = batch['image'].to(device), batch['label'].to(device)
                 outputs, icnn_ = model(images)
                 _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-        
-            logger.info(f"Accuracy of the model on the {total} validation images: {100 * correct / total} %")
-            mlflow.log_metric("val_accuracy", 100 * correct / total, step=epoch)
 
-            correct = 0
-            total = 0
+                predicted_all.append(predicted)
+                labels_all.append(labels)
+
+            predicted_all = torch.cat(predicted_all)
+            labels_all = torch.cat(labels_all)
+            
+            average_specificity = specificity(predicted_all, labels_all.long()).item()
+            average_accuracy = accuracy(predicted_all, labels_all.long()).item()
+            average_precision = precision(predicted_all, labels_all.long()).item()
+            average_recall = recall(predicted_all, labels_all.long()).item()
+
+            mlflow.log_metric("val_specificity", average_specificity, step=epoch)
+            mlflow.log_metric("val_accuracy", average_accuracy, step=epoch)
+            mlflow.log_metric("val_precision", average_precision, step=epoch)
+            mlflow.log_metric("val_recall", average_recall, step=epoch)
+
+            predicted_all = []
+            labels_all = []
             for batch in trainloader:
                 images, labels = batch['image'].to(device), batch['label'].to(device)
                 outputs, icnn_ = model(images)
                 _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+                
+                predicted_all.append(predicted)
+                labels_all.append(labels)
+            predicted_all = torch.cat(predicted_all)
+            labels_all = torch.cat(labels_all)
 
-            logger.info(f"Accuracy of the model on the {total} train images: {100 * correct / total} %")
-            mlflow.log_metric("train_accuracy", 100 * correct / total, step=epoch)
+            average_specificity = specificity(predicted_all, labels_all.long()).item()
+            average_accuracy = accuracy(predicted_all, labels_all.long()).item()
+            average_precision = precision(predicted_all, labels_all.long()).item()
+            average_recall = recall(predicted_all, labels_all.long()).item()
+
+            mlflow.log_metric("train_specificity", average_specificity, step=epoch)
+            mlflow.log_metric("train_accuracy", average_accuracy, step=epoch)
+            mlflow.log_metric("train_precision", average_precision, step=epoch)
+            mlflow.log_metric("train_recall", average_recall, step=epoch)
+            
 
         for key in losses_epoch:
             mlflow.log_metric(f"train_{key}", np.mean(losses_epoch[key]), step=epoch)

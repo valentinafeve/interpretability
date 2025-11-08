@@ -34,7 +34,7 @@ def plot_tensors(
     cmap="magma",
     show_colorbar=True,
     save_path=None,
-    max_cols=None,
+    cols=None,
     tile_size=2.0,
 ):
     """
@@ -54,8 +54,8 @@ def plot_tensors(
             Whether to display a shared colorbar. Defaults to True.
         save_path (str, optional):
             File path to save the plot. If None, the plot is not saved.
-        max_cols (int, optional):
-            Maximum number of columns in the grid. Defaults to a square layout.
+        cols (int, optional):
+            Number of columns in the grid. Defaults to a square layout.
         tile_size (float, optional):
             Size (in inches) of each subplot tile. Defaults to 2.0.
 
@@ -70,10 +70,8 @@ def plot_tensors(
     N = B * K
 
     # --- cuadrado automático ---
-    if max_cols is None:
+    if cols is None:
         cols = int(np.ceil(np.sqrt(N)))
-    else:
-        cols = min(max_cols, N)
     cols = max(cols, 1)
     rows = int(np.ceil(N / cols))
 
@@ -82,6 +80,8 @@ def plot_tensors(
 
     global_vmin = float(imgs.min())
     global_vmax = float(imgs.max())
+    vmin = global_vmin
+    vmax = global_vmax
 
     for idx in range(N):
         row, col = divmod(idx, cols)

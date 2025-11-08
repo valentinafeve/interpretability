@@ -10,7 +10,7 @@ class Model(nn.Module):
         self.cnn2 = nn.Conv2d(in_channels=filters_cnn, out_channels=filters_icnn, kernel_size=3, padding=1)
 
         input_size = filters_icnn * (feature_map_size // 4) * (feature_map_size // 4)
-        self.linear = nn.Linear(3072, 100)
+        self.linear = nn.Linear(input_size, 100)
         self.classifier = nn.Linear(100, num_classes)
 
     def forward(self, x):
@@ -18,9 +18,9 @@ class Model(nn.Module):
         x = self.pool(x)
         x = nn.ReLU()(x)
         x = self.cnn2(x)
+        x = self.pool(x)
         x = nn.ReLU()(x)
         filters = x
-        x = self.pool(x)
         x = x.view(x.size(0), -1)
         x = self.linear(x)
         x = nn.ReLU()(x)

@@ -11,7 +11,7 @@
             "module": "training.main",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
-            "python": "/opt/anaconda3/envs/interpretability/bin/python"
+            "python": "/Users/valefeve/Projects/interpretability/venv/bin/python"
         }
     ]
 }

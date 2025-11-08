@@ -1,7 +1,7 @@
 import torch
 from training.utils.plots import plot_tensors
 
-def mutual_information(X: torch.Tensor, templates: torch.Tensor, n, device='cpu'):
+def mutual_information(X: torch.Tensor, templates: torch.Tensor, n, n_classes, labels, device='cpu'):
     atol = 1e-2
     rtol = 1e-2
 
@@ -10,15 +10,31 @@ def mutual_information(X: torch.Tensor, templates: torch.Tensor, n, device='cpu'
     indices = torch.argmax(X_flat, dim=-1)
 
     X_expanded = X.unsqueeze(2)
-    T_expanded = templates.unsqueeze(0).unsqueeze(0)
+    T_expanded = templates.unsqueeze(0).unsqueeze(0)[:, :, :-1, :, :]
+    T_negative = templates.unsqueeze(0).unsqueeze(0)[:, :, -1, :, :]
     T_expanded = T_expanded[:, :, indices, :, :].view(X_expanded.shape)
 
     XT = torch.mul(X_expanded, T_expanded)
-    s_max = XT.max(dim=-1)[0].max(dim=-1)[0]
-    s_min = XT.min(dim=-1)[0].min(dim=-1)[0]
+    XT_negative = torch.mul(X_expanded, T_negative)
+    XT_stack = torch.stack([XT, XT_negative])
+
+    filters = XT.shape[1]
+    batch = XT.shape[0]
+    indexes = torch.arange(filters // n_classes, device=XT_stack.device, dtype=torch.long).repeat((batch, 1)) + (labels * (filters // n_classes)).unsqueeze(1) 
+    indexes_one_hot = torch.nn.functional.one_hot(indexes, num_classes=filters).sum(dim=1)
+    mask = indexes_one_hot[:, :, None, None, None].expand_as(XT).bool()
+    mask_inverted = ~mask
+
+    XT = torch.mul(XT, mask)
+    XT_negative = torch.mul(XT_negative, mask_inverted)
+
+    XT_combined = XT + XT_negative
+
+    s_max = XT_combined.max(dim=-1)[0].max(dim=-1)[0]
+    s_min = XT_combined.min(dim=-1)[0].min(dim=-1)[0]
 
     # XT = XT / s_max.unsqueeze(-1).unsqueeze(-1)
-    trace = XT.nansum(dim=(-1, -2))           # (B, C, T)
+    trace = XT_combined.nansum(dim=(-1, -2))           # (B, C, T)
 
     # numerically stable softmax over dim=1 (can confirm below)
     trace_max, _ = trace.max(dim=1, keepdim=True)   # (B, 1, T)
